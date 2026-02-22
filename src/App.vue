@@ -14,12 +14,53 @@ interface Game {
   multi: boolean
 }
 
-// Ambient Audio Engine
+// Ambient Audio Engine with Royalty-Free Music
+const AMBIENT_TRACKS = [
+  {
+    name: "Cosmic Drift",
+    artist: "Ambient Worlds",
+    url: "https://cdn.pixabay.com/download/audio/2022/03/10/audio_c6c2ee2c1b.mp3",
+    duration: "3:30"
+  },
+  {
+    name: "Floating Abstract",
+    artist: "Coma-Media",
+    url: "https://cdn.pixabay.com/download/audio/2022/10/25/audio_946bc3eb81.mp3",
+    duration: "2:45"
+  },
+  {
+    name: "Ambient Dreams",
+    artist: "punchydude", 
+    url: "https://cdn.pixabay.com/download/audio/2022/08/02/audio_884fe92c21.mp3",
+    duration: "3:15"
+  },
+  {
+    name: "Peaceful Mind",
+    artist: "Lesfm",
+    url: "https://cdn.pixabay.com/download/audio/2022/03/15/audio_115903e1b7.mp3",
+    duration: "2:50"
+  },
+  {
+    name: "Dreams",
+    artist: "Coma-Media",
+    url: "https://cdn.pixabay.com/download/audio/2021/11/13/audio_4176312ef5.mp3",
+    duration: "3:00"
+  },
+  {
+    name: "Ambient Nature",
+    artist: "Coma-Media",
+    url: "https://cdn.pixabay.com/download/audio/2022/08/02/audio_884fe3bce3.mp3",
+    duration: "2:30"
+  }
+]
+
 class AmbientAudio {
   private audioContext: AudioContext | null = null
   private masterGain: GainNode | null = null
-  private oscillators: OscillatorNode[] = []
+  private audioElements: HTMLAudioElement[] = []
+  private currentTrackIndex = 0
   private isPlaying = false
+  private currentAudio: HTMLAudioElement | null = null
   
   init() {
     if (this.audioContext) return
@@ -29,131 +70,99 @@ class AmbientAudio {
     this.masterGain.connect(this.audioContext.destination)
   }
   
-  createDrone(freq: number, detune: number = 0) {
-    if (!this.audioContext || !this.masterGain) return null
-    
-    const osc = this.audioContext.createOscillator()
-    const gain = this.audioContext.createGain()
-    const filter = this.audioContext.createBiquadFilter()
-    
-    osc.type = 'sine'
-    osc.frequency.value = freq
-    osc.detune.value = detune
-    
-    filter.type = 'lowpass'
-    filter.frequency.value = 800
-    filter.Q.value = 1
-    
-    gain.gain.value = 0
-    
-    osc.connect(filter)
-    filter.connect(gain)
-    gain.connect(this.masterGain)
-    
-    return { osc, gain, filter }
-  }
-  
-  start() {
-    if (this.isPlaying) return
-    this.init()
-    this.isPlaying = true
-    
-    // Base frequencies for ambient drone
-    const baseFreqs = [55, 82.5, 110, 165, 220, 330]
-    
-    baseFreqs.forEach((freq, i) => {
-      const drone = this.createDrone(freq, Math.random() * 10 - 5)
-      if (drone) {
-        drone.osc.start()
-        this.oscillators.push(drone.osc)
-        
-        // Slow fade in
-        drone.gain.gain.setTargetAtTime(0.03, this.audioContext!.currentTime, 2)
-        
-        // Subtle modulation
-        this.modulateParam(drone.gain.gain, 0.015, 0.045, 8 + i * 0.5)
-        this.modulateParam(drone.filter.frequency, 400, 1200, 12 + i)
-      }
-    })
-    
-    // Add some shimmer/lfo effects
-    this.addShimmer(880, 0.008)
-    this.addShimmer(1320, 0.006)
-    
-    // Fade in master
-    this.masterGain?.gain.setTargetAtTime(0.3, this.audioContext?.currentTime ?? 0, 3)
-  }
-  
-  addShimmer(freq: number, amplitude: number) {
+  async playTrack(index: number) {
     if (!this.audioContext || !this.masterGain) return
     
-    const osc = this.audioContext.createOscillator()
-    const gain = this.audioContext.createGain()
-    
-    osc.type = 'sine'
-    osc.frequency.value = freq
-    
-    gain.gain.value = 0
-    
-    osc.connect(gain)
-    gain.connect(this.masterGain)
-    osc.start()
-    this.oscillators.push(osc)
-    
-    // Modulate for shimmer effect
-    this.modulateParam(gain.gain, 0, amplitude, 3 + Math.random() * 2)
-  }
-  
-  modulateParam(param: AudioParam, min: number, max: number, speed: number) {
-    if (!this.audioContext) return
-    
-    const modulate = () => {
-      if (!this.isPlaying) return
-      
-      const now = this.audioContext!.currentTime
-      const duration = speed + Math.random() * speed
-      const value = min + Math.random() * (max - min)
-      
-      param.setTargetAtTime(value, now, duration)
-      
-      setTimeout(modulate, duration * 1000)
+    // Stop current track
+    if (this.currentAudio) {
+      this.currentAudio.pause()
+      this.currentAudio.currentTime = 0
     }
     
-    modulate()
+    const track = AMBIENT_TRACKS[index]
+    const audio = new Audio(track.url)
+    audio.crossOrigin = "anonymous"
+    
+    const source = this.audioContext.createMediaElementSource(audio)
+    source.connect(this.masterGain)
+    
+    audio.loop = true
+    this.currentAudio = audio
+    this.currentTrackIndex = index
+    
+    try {
+      await audio.play()
+      this.isPlaying = true
+      this.masterGain.gain.setTargetAtTime(0.5, this.audioContext.currentTime, 0.5)
+    } catch (e) {
+      console.log('Audio playback failed:', e)
+    }
+  }
+  
+  async start() {
+    this.init()
+    await this.playTrack(0)
+  }
+  
+  async nextTrack() {
+    const nextIndex = (this.currentTrackIndex + 1) % AMBIENT_TRACKS.length
+    await this.playTrack(nextIndex)
+  }
+  
+  async prevTrack() {
+    const prevIndex = (this.currentTrackIndex - 1 + AMBIENT_TRACKS.length) % AMBIENT_TRACKS.length
+    await this.playTrack(prevIndex)
   }
   
   stop() {
-    if (!this.isPlaying || !this.audioContext || !this.masterGain) return
+    if (this.currentAudio) {
+      this.currentAudio.pause()
+      this.currentAudio.currentTime = 0
+    }
     this.isPlaying = false
-    
-    // Fade out
-    this.masterGain.gain.setTargetAtTime(0, this.audioContext.currentTime, 1)
-    
-    setTimeout(() => {
-      this.oscillators.forEach(osc => {
-        try { osc.stop() } catch {}
-      })
-      this.oscillators = []
-    }, 1500)
+    this.masterGain?.gain.setTargetAtTime(0, this.audioContext?.currentTime ?? 0, 0.3)
+  }
+  
+  getCurrentTrack() {
+    return AMBIENT_TRACKS[this.currentTrackIndex]
   }
   
   setVolume(value: number) {
-    this.masterGain?.gain.setTargetAtTime(value * 0.3, this.audioContext?.currentTime ?? 0, 0.1)
+    this.masterGain?.gain.setTargetAtTime(value, this.audioContext?.currentTime ?? 0, 0.1)
   }
 }
 
 const ambientAudio = new AmbientAudio()
 const soundEnabled = ref(false)
 const showSoundToggle = ref(false)
+const currentTrackName = ref('')
+const volume = ref(50)
+const showVolumeSlider = ref(false)
 
-const toggleSound = () => {
+const toggleSound = async () => {
   if (soundEnabled.value) {
     ambientAudio.stop()
     soundEnabled.value = false
+    currentTrackName.value = ''
   } else {
-    ambientAudio.start()
+    await ambientAudio.start()
     soundEnabled.value = true
+    currentTrackName.value = ambientAudio.getCurrentTrack()?.name || ''
   }
+}
+
+const nextTrack = async () => {
+  await ambientAudio.nextTrack()
+  currentTrackName.value = ambientAudio.getCurrentTrack()?.name || ''
+}
+
+const prevTrack = async () => {
+  await ambientAudio.prevTrack()
+  currentTrackName.value = ambientAudio.getCurrentTrack()?.name || ''
+}
+
+const updateVolume = () => {
+  ambientAudio.setVolume(volume.value / 100)
 }
 
 const GAMES: Game[] = [
@@ -476,6 +485,49 @@ onUnmounted(() => {
           <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
         </svg>
       </button>
+
+      <div v-if="showSoundToggle" class="music-player" :class="{ expanded: soundEnabled }">
+        <div class="music-header" @click="showVolumeSlider = !showVolumeSlider">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" class="music-icon">
+            <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+          </svg>
+          <span class="music-title">{{ currentTrackName || 'Ambient Music' }}</span>
+        </div>
+        
+        <div v-if="soundEnabled" class="music-controls">
+          <button @click="prevTrack" class="music-btn" title="Previous track">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+              <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+            </svg>
+          </button>
+          
+          <button @click="toggleSound" class="music-btn play-btn" title="Pause">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+            </svg>
+          </button>
+          
+          <button @click="nextTrack" class="music-btn" title="Next track">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+            </svg>
+          </button>
+          
+          <div class="volume-control">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
+            </svg>
+            <input 
+              type="range" 
+              min="0" 
+              max="100" 
+              v-model="volume" 
+              @input="updateVolume"
+              class="volume-slider"
+            />
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="main-content">
@@ -956,6 +1008,149 @@ onUnmounted(() => {
 .sound-toggle svg {
   width: 20px;
   height: 20px;
+}
+
+.music-player {
+  position: fixed;
+  bottom: 90px;
+  right: 30px;
+  background: rgba(10, 10, 26, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 16px;
+  padding: 12px 16px;
+  z-index: 100;
+  min-width: 200px;
+  animation: slideIn 0.3s ease-out;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  transition: all 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.music-player.expanded {
+  border-color: rgba(232,255,0,0.3);
+  box-shadow: 0 10px 40px rgba(0,0,0,0.5), 0 0 40px rgba(232,255,0,0.1);
+}
+
+.music-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.music-icon {
+  color: #e8ff00;
+}
+
+.music-title {
+  font-size: 12px;
+  color: #e4e8ef;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+.music-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+
+.music-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.05);
+  color: #9ca3af;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.music-btn:hover {
+  border-color: #e8ff00;
+  color: #e8ff00;
+  background: rgba(232,255,0,0.1);
+  transform: scale(1.05);
+}
+
+.music-btn.play-btn {
+  width: 42px;
+  height: 42px;
+  background: #e8ff00;
+  color: #000;
+  border-color: #e8ff00;
+}
+
+.music-btn.play-btn:hover {
+  background: #fff;
+  transform: scale(1.1);
+  box-shadow: 0 4px 20px rgba(232,255,0,0.4);
+}
+
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex: 1;
+}
+
+.volume-control svg {
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 60px;
+  height: 4px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #e8ff00;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 10px rgba(232,255,0,0.5);
+}
+
+.volume-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #e8ff00;
+  cursor: pointer;
+  border: none;
 }
 
 .main-content {
