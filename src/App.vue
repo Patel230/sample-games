@@ -14,53 +14,18 @@ interface Game {
   multi: boolean
 }
 
-// Ambient Audio Engine with Royalty-Free Music
-const AMBIENT_TRACKS = [
-  {
-    name: "Cosmic Drift",
-    artist: "Ambient Worlds",
-    url: "https://cdn.pixabay.com/download/audio/2022/03/10/audio_c6c2ee2c1b.mp3",
-    duration: "3:30"
-  },
-  {
-    name: "Floating Abstract",
-    artist: "Coma-Media",
-    url: "https://cdn.pixabay.com/download/audio/2022/10/25/audio_946bc3eb81.mp3",
-    duration: "2:45"
-  },
-  {
-    name: "Ambient Dreams",
-    artist: "punchydude", 
-    url: "https://cdn.pixabay.com/download/audio/2022/08/02/audio_884fe92c21.mp3",
-    duration: "3:15"
-  },
-  {
-    name: "Peaceful Mind",
-    artist: "Lesfm",
-    url: "https://cdn.pixabay.com/download/audio/2022/03/15/audio_115903e1b7.mp3",
-    duration: "2:50"
-  },
-  {
-    name: "Dreams",
-    artist: "Coma-Media",
-    url: "https://cdn.pixabay.com/download/audio/2021/11/13/audio_4176312ef5.mp3",
-    duration: "3:00"
-  },
-  {
-    name: "Ambient Nature",
-    artist: "Coma-Media",
-    url: "https://cdn.pixabay.com/download/audio/2022/08/02/audio_884fe3bce3.mp3",
-    duration: "2:30"
-  }
-]
+// Ambient Audio - Single Best Track
+const AMBIENT_TRACK = {
+  name: "Ambient Dreams",
+  artist: "Coma-Media",
+  url: "https://cdn.pixabay.com/download/audio/2021/11/13/audio_4176312ef5.mp3"
+}
 
 class AmbientAudio {
   private audioContext: AudioContext | null = null
   private masterGain: GainNode | null = null
-  private audioElements: HTMLAudioElement[] = []
-  private currentTrackIndex = 0
+  private audio: HTMLAudioElement | null = null
   private isPlaying = false
-  private currentAudio: HTMLAudioElement | null = null
   
   init() {
     if (this.audioContext) return
@@ -70,28 +35,20 @@ class AmbientAudio {
     this.masterGain.connect(this.audioContext.destination)
   }
   
-  async playTrack(index: number) {
+  async start() {
+    this.init()
     if (!this.audioContext || !this.masterGain) return
     
-    // Stop current track
-    if (this.currentAudio) {
-      this.currentAudio.pause()
-      this.currentAudio.currentTime = 0
-    }
+    this.audio = new Audio(AMBIENT_TRACK.url)
+    this.audio.crossOrigin = "anonymous"
     
-    const track = AMBIENT_TRACKS[index]
-    const audio = new Audio(track.url)
-    audio.crossOrigin = "anonymous"
-    
-    const source = this.audioContext.createMediaElementSource(audio)
+    const source = this.audioContext.createMediaElementSource(this.audio)
     source.connect(this.masterGain)
     
-    audio.loop = true
-    this.currentAudio = audio
-    this.currentTrackIndex = index
+    this.audio.loop = true
     
     try {
-      await audio.play()
+      await this.audio.play()
       this.isPlaying = true
       this.masterGain.gain.setTargetAtTime(0.5, this.audioContext.currentTime, 0.5)
     } catch (e) {
@@ -99,32 +56,17 @@ class AmbientAudio {
     }
   }
   
-  async start() {
-    this.init()
-    await this.playTrack(0)
-  }
-  
-  async nextTrack() {
-    const nextIndex = (this.currentTrackIndex + 1) % AMBIENT_TRACKS.length
-    await this.playTrack(nextIndex)
-  }
-  
-  async prevTrack() {
-    const prevIndex = (this.currentTrackIndex - 1 + AMBIENT_TRACKS.length) % AMBIENT_TRACKS.length
-    await this.playTrack(prevIndex)
-  }
-  
   stop() {
-    if (this.currentAudio) {
-      this.currentAudio.pause()
-      this.currentAudio.currentTime = 0
+    if (this.audio) {
+      this.audio.pause()
+      this.audio.currentTime = 0
     }
     this.isPlaying = false
     this.masterGain?.gain.setTargetAtTime(0, this.audioContext?.currentTime ?? 0, 0.3)
   }
   
   getCurrentTrack() {
-    return AMBIENT_TRACKS[this.currentTrackIndex]
+    return AMBIENT_TRACK
   }
   
   setVolume(value: number) {
@@ -135,30 +77,16 @@ class AmbientAudio {
 const ambientAudio = new AmbientAudio()
 const soundEnabled = ref(false)
 const showSoundToggle = ref(false)
-const currentTrackName = ref('')
 const volume = ref(50)
-const showVolumeSlider = ref(false)
 
 const toggleSound = async () => {
   if (soundEnabled.value) {
     ambientAudio.stop()
     soundEnabled.value = false
-    currentTrackName.value = ''
   } else {
     await ambientAudio.start()
     soundEnabled.value = true
-    currentTrackName.value = ambientAudio.getCurrentTrack()?.name || ''
   }
-}
-
-const nextTrack = async () => {
-  await ambientAudio.nextTrack()
-  currentTrackName.value = ambientAudio.getCurrentTrack()?.name || ''
-}
-
-const prevTrack = async () => {
-  await ambientAudio.prevTrack()
-  currentTrackName.value = ambientAudio.getCurrentTrack()?.name || ''
 }
 
 const updateVolume = () => {
