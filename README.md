@@ -7,6 +7,8 @@ A curated collection of the best Three.js games, demos, and experiences. All gam
 ![Vite](https://img.shields.io/badge/Vite-6.x-646CFF?logo=vite)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
+![Sample Games Screenshot](public/screenshot.png)
+
 ## Features
 
 - 50 curated Three.js games and demos
