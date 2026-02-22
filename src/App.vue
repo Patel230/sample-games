@@ -1,6 +1,22 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 
+const audioRef = ref<HTMLAudioElement | null>(null)
+const isPlaying = ref(false)
+
+const toggleAudio = () => {
+  if (!audioRef.value) return
+  if (isPlaying.value) {
+    audioRef.value.pause()
+    isPlaying.value = false
+  } else {
+    audioRef.value.volume = 0.3
+    audioRef.value.play().then(() => {
+      isPlaying.value = true
+    }).catch(() => {})
+  }
+}
+
 interface Game {
   rank: number
   name: string
@@ -12,85 +28,6 @@ interface Game {
   rating: string
   free: boolean
   multi: boolean
-}
-
-// Ambient Audio - Single Best Track
-const AMBIENT_TRACK = {
-  name: "Ambient Dreams",
-  artist: "Coma-Media",
-  url: "https://cdn.pixabay.com/download/audio/2021/11/13/audio_4176312ef5.mp3"
-}
-
-class AmbientAudio {
-  private audioContext: AudioContext | null = null
-  private masterGain: GainNode | null = null
-  private audio: HTMLAudioElement | null = null
-  private isPlaying = false
-  
-  init() {
-    if (this.audioContext) return
-    this.audioContext = new AudioContext()
-    this.masterGain = this.audioContext.createGain()
-    this.masterGain.gain.value = 0
-    this.masterGain.connect(this.audioContext.destination)
-  }
-  
-  async start() {
-    this.init()
-    if (!this.audioContext || !this.masterGain) return
-    
-    this.audio = new Audio(AMBIENT_TRACK.url)
-    this.audio.crossOrigin = "anonymous"
-    
-    const source = this.audioContext.createMediaElementSource(this.audio)
-    source.connect(this.masterGain)
-    
-    this.audio.loop = true
-    
-    try {
-      await this.audio.play()
-      this.isPlaying = true
-      this.masterGain.gain.setTargetAtTime(0.5, this.audioContext.currentTime, 0.5)
-    } catch (e) {
-      console.log('Audio playback failed:', e)
-    }
-  }
-  
-  stop() {
-    if (this.audio) {
-      this.audio.pause()
-      this.audio.currentTime = 0
-    }
-    this.isPlaying = false
-    this.masterGain?.gain.setTargetAtTime(0, this.audioContext?.currentTime ?? 0, 0.3)
-  }
-  
-  getCurrentTrack() {
-    return AMBIENT_TRACK
-  }
-  
-  setVolume(value: number) {
-    this.masterGain?.gain.setTargetAtTime(value, this.audioContext?.currentTime ?? 0, 0.1)
-  }
-}
-
-const ambientAudio = new AmbientAudio()
-const soundEnabled = ref(false)
-const showSoundToggle = ref(false)
-const volume = ref(50)
-
-const toggleSound = async () => {
-  if (soundEnabled.value) {
-    ambientAudio.stop()
-    soundEnabled.value = false
-  } else {
-    await ambientAudio.start()
-    soundEnabled.value = true
-  }
-}
-
-const updateVolume = () => {
-  ambientAudio.setVolume(volume.value / 100)
 }
 
 const GAMES: Game[] = [
@@ -340,17 +277,29 @@ const initCanvas = () => {
 
 onMounted(() => {
   initCanvas()
-  setTimeout(() => showSoundToggle.value = true, 2000)
 })
 
 onUnmounted(() => {
   if (raf) cancelAnimationFrame(raf)
-  ambientAudio.stop()
+  if (audioRef.value) {
+    audioRef.value.pause()
+  }
 })
 </script>
 
 <template>
   <div class="app">
+    <audio ref="audioRef" src="/ambient.mp3" loop preload="auto"></audio>
+    
+    <button @click="toggleAudio" class="music-btn" :title="isPlaying ? 'Pause Music' : 'Play Music'">
+      <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+      </svg>
+      <svg v-else viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+        <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+      </svg>
+    </button>
+    
     <div class="hero">
       <canvas ref="canvasRef" class="animated-bg"></canvas>
       <div class="grid-overlay"></div>
@@ -397,64 +346,6 @@ onUnmounted(() => {
 
       <div class="scroll-indicator">
         <div class="scroll-line"></div>
-      </div>
-
-      <button 
-        v-if="showSoundToggle"
-        @click="toggleSound" 
-        class="sound-toggle"
-        :class="{ active: soundEnabled }"
-        :title="soundEnabled ? 'Mute ambient sound' : 'Play ambient sound'"
-      >
-        <svg v-if="soundEnabled" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
-          <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
-        </svg>
-        <svg v-else viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
-          <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
-        </svg>
-      </button>
-
-      <div v-if="showSoundToggle" class="music-player" :class="{ expanded: soundEnabled }">
-        <div class="music-header" @click="showVolumeSlider = !showVolumeSlider">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" class="music-icon">
-            <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-          </svg>
-          <span class="music-title">{{ currentTrackName || 'Ambient Music' }}</span>
-        </div>
-        
-        <div v-if="soundEnabled" class="music-controls">
-          <button @click="prevTrack" class="music-btn" title="Previous track">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-              <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
-            </svg>
-          </button>
-          
-          <button @click="toggleSound" class="music-btn play-btn" title="Pause">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
-              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-            </svg>
-          </button>
-          
-          <button @click="nextTrack" class="music-btn" title="Next track">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
-            </svg>
-          </button>
-          
-          <div class="volume-control">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
-              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
-            </svg>
-            <input 
-              type="range" 
-              min="0" 
-              max="100" 
-              v-model="volume" 
-              @input="updateVolume"
-              class="volume-slider"
-            />
-          </div>
-        </div>
       </div>
     </div>
 
@@ -889,196 +780,39 @@ onUnmounted(() => {
   animation: pulse 2s ease-in-out infinite;
 }
 
-.sound-toggle {
+.music-btn {
   position: fixed;
-  bottom: 30px;
+  bottom: 100px;
   right: 30px;
   width: 50px;
   height: 50px;
+  background: rgba(10, 10, 26, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 50%;
-  border: 2px solid rgba(255,255,255,0.1);
-  background: rgba(10, 10, 26, 0.8);
+  cursor: pointer;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
   backdrop-filter: blur(10px);
-  color: #6b7280;
-  cursor: pointer;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s ease;
-  animation: fadeInUp 1s ease-out backwards;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
 }
 
-.sound-toggle:hover {
-  border-color: #e8ff00;
-  color: #e8ff00;
-  transform: scale(1.1);
-  box-shadow: 0 8px 30px rgba(232,255,0,0.2);
+.music-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: scale(1.05);
+  box-shadow: 0 4px 15px rgba(232, 255, 0, 0.3);
 }
 
-.sound-toggle.active {
-  border-color: #e8ff00;
-  color: #e8ff00;
-  background: rgba(232,255,0,0.1);
-  animation: soundPulse 2s ease-in-out infinite;
-}
-
-@keyframes soundPulse {
-  0%, 100% { 
-    box-shadow: 0 0 20px rgba(232,255,0,0.2);
-  }
-  50% { 
-    box-shadow: 0 0 40px rgba(232,255,0,0.4), 0 0 60px rgba(0,229,255,0.2);
-  }
-}
-
-.sound-toggle svg {
-  width: 20px;
-  height: 20px;
-}
-
-.music-player {
-  position: fixed;
-  bottom: 90px;
-  right: 30px;
-  background: rgba(10, 10, 26, 0.95);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 16px;
-  padding: 12px 16px;
-  z-index: 100;
-  min-width: 200px;
-  animation: slideIn 0.3s ease-out;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-  transition: all 0.3s ease;
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.music-player.expanded {
-  border-color: rgba(232,255,0,0.3);
-  box-shadow: 0 10px 40px rgba(0,0,0,0.5), 0 0 40px rgba(232,255,0,0.1);
-}
-
-.music-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  padding: 4px 0;
-}
-
-.music-icon {
-  color: #e8ff00;
-}
-
-.music-title {
-  font-size: 12px;
-  color: #e4e8ef;
-  font-weight: 500;
-  letter-spacing: 0.5px;
-}
-
-.music-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(255,255,255,0.05);
-}
-
-.music-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 1px solid rgba(255,255,255,0.1);
-  background: rgba(255,255,255,0.05);
-  color: #9ca3af;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
+.music-btn.playing {
+  background: #e8ff00;
+  animation: pulse 1.5s ease-in-out infinite;
 }
 
 .music-btn:hover {
   border-color: #e8ff00;
-  color: #e8ff00;
-  background: rgba(232,255,0,0.1);
-  transform: scale(1.05);
-}
-
-.music-btn.play-btn {
-  width: 42px;
-  height: 42px;
-  background: #e8ff00;
-  color: #000;
-  border-color: #e8ff00;
-}
-
-.music-btn.play-btn:hover {
-  background: #fff;
   transform: scale(1.1);
-  box-shadow: 0 4px 20px rgba(232,255,0,0.4);
-}
-
-.volume-control {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  flex: 1;
-}
-
-.volume-control svg {
-  color: #6b7280;
-  flex-shrink: 0;
-}
-
-.volume-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 60px;
-  height: 4px;
-  background: rgba(255,255,255,0.1);
-  border-radius: 2px;
-  cursor: pointer;
-}
-
-.volume-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #e8ff00;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.volume-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
-  box-shadow: 0 0 10px rgba(232,255,0,0.5);
-}
-
-.volume-slider::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #e8ff00;
-  cursor: pointer;
-  border: none;
+  box-shadow: 0 0 30px rgba(232,255,0,0.3);
 }
 
 .main-content {
