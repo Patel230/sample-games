@@ -14,6 +14,148 @@ interface Game {
   multi: boolean
 }
 
+// Ambient Audio Engine
+class AmbientAudio {
+  private audioContext: AudioContext | null = null
+  private masterGain: GainNode | null = null
+  private oscillators: OscillatorNode[] = []
+  private isPlaying = false
+  
+  init() {
+    if (this.audioContext) return
+    this.audioContext = new AudioContext()
+    this.masterGain = this.audioContext.createGain()
+    this.masterGain.gain.value = 0
+    this.masterGain.connect(this.audioContext.destination)
+  }
+  
+  createDrone(freq: number, detune: number = 0) {
+    if (!this.audioContext || !this.masterGain) return null
+    
+    const osc = this.audioContext.createOscillator()
+    const gain = this.audioContext.createGain()
+    const filter = this.audioContext.createBiquadFilter()
+    
+    osc.type = 'sine'
+    osc.frequency.value = freq
+    osc.detune.value = detune
+    
+    filter.type = 'lowpass'
+    filter.frequency.value = 800
+    filter.Q.value = 1
+    
+    gain.gain.value = 0
+    
+    osc.connect(filter)
+    filter.connect(gain)
+    gain.connect(this.masterGain)
+    
+    return { osc, gain, filter }
+  }
+  
+  start() {
+    if (this.isPlaying) return
+    this.init()
+    this.isPlaying = true
+    
+    // Base frequencies for ambient drone
+    const baseFreqs = [55, 82.5, 110, 165, 220, 330]
+    
+    baseFreqs.forEach((freq, i) => {
+      const drone = this.createDrone(freq, Math.random() * 10 - 5)
+      if (drone) {
+        drone.osc.start()
+        this.oscillators.push(drone.osc)
+        
+        // Slow fade in
+        drone.gain.gain.setTargetAtTime(0.03, this.audioContext!.currentTime, 2)
+        
+        // Subtle modulation
+        this.modulateParam(drone.gain.gain, 0.015, 0.045, 8 + i * 0.5)
+        this.modulateParam(drone.filter.frequency, 400, 1200, 12 + i)
+      }
+    })
+    
+    // Add some shimmer/lfo effects
+    this.addShimmer(880, 0.008)
+    this.addShimmer(1320, 0.006)
+    
+    // Fade in master
+    this.masterGain?.gain.setTargetAtTime(0.3, this.audioContext?.currentTime ?? 0, 3)
+  }
+  
+  addShimmer(freq: number, amplitude: number) {
+    if (!this.audioContext || !this.masterGain) return
+    
+    const osc = this.audioContext.createOscillator()
+    const gain = this.audioContext.createGain()
+    
+    osc.type = 'sine'
+    osc.frequency.value = freq
+    
+    gain.gain.value = 0
+    
+    osc.connect(gain)
+    gain.connect(this.masterGain)
+    osc.start()
+    this.oscillators.push(osc)
+    
+    // Modulate for shimmer effect
+    this.modulateParam(gain.gain, 0, amplitude, 3 + Math.random() * 2)
+  }
+  
+  modulateParam(param: AudioParam, min: number, max: number, speed: number) {
+    if (!this.audioContext) return
+    
+    const modulate = () => {
+      if (!this.isPlaying) return
+      
+      const now = this.audioContext!.currentTime
+      const duration = speed + Math.random() * speed
+      const value = min + Math.random() * (max - min)
+      
+      param.setTargetAtTime(value, now, duration)
+      
+      setTimeout(modulate, duration * 1000)
+    }
+    
+    modulate()
+  }
+  
+  stop() {
+    if (!this.isPlaying || !this.audioContext || !this.masterGain) return
+    this.isPlaying = false
+    
+    // Fade out
+    this.masterGain.gain.setTargetAtTime(0, this.audioContext.currentTime, 1)
+    
+    setTimeout(() => {
+      this.oscillators.forEach(osc => {
+        try { osc.stop() } catch {}
+      })
+      this.oscillators = []
+    }, 1500)
+  }
+  
+  setVolume(value: number) {
+    this.masterGain?.gain.setTargetAtTime(value * 0.3, this.audioContext?.currentTime ?? 0, 0.1)
+  }
+}
+
+const ambientAudio = new AmbientAudio()
+const soundEnabled = ref(false)
+const showSoundToggle = ref(false)
+
+const toggleSound = () => {
+  if (soundEnabled.value) {
+    ambientAudio.stop()
+    soundEnabled.value = false
+  } else {
+    ambientAudio.start()
+    soundEnabled.value = true
+  }
+}
+
 const GAMES: Game[] = [
   { rank: 1, name: "Narrow One", dev: "Pelican Party", cat: "Multiplayer", tagline: "5v5 medieval capture-the-flag archery - the most popular Three.js game on itch.io.", desc: "Fight fast-paced archery battles in medieval castles. Protect and capture the flag across 16+ unique maps.", playUrl: "https://pelicanparty.itch.io/narrow-one", rating: "4.6* 837 ratings", free: true, multi: true },
   { rank: 2, name: "PolyTrack", dev: "Kodub", cat: "Racing", tagline: "High-speed low-poly racing with a track editor and global leaderboards.", desc: "A fast, loop-filled low-poly racing game inspired by TrackMania.", playUrl: "https://kodub.itch.io/polytrack", rating: "4.7* 477 ratings", free: true, multi: false },
@@ -261,10 +403,12 @@ const initCanvas = () => {
 
 onMounted(() => {
   initCanvas()
+  setTimeout(() => showSoundToggle.value = true, 2000)
 })
 
 onUnmounted(() => {
   if (raf) cancelAnimationFrame(raf)
+  ambientAudio.stop()
 })
 </script>
 
@@ -317,6 +461,21 @@ onUnmounted(() => {
       <div class="scroll-indicator">
         <div class="scroll-line"></div>
       </div>
+
+      <button 
+        v-if="showSoundToggle"
+        @click="toggleSound" 
+        class="sound-toggle"
+        :class="{ active: soundEnabled }"
+        :title="soundEnabled ? 'Mute ambient sound' : 'Play ambient sound'"
+      >
+        <svg v-if="soundEnabled" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+          <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+        </svg>
+        <svg v-else viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+          <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+        </svg>
+      </button>
     </div>
 
     <div class="main-content">
@@ -748,6 +907,55 @@ onUnmounted(() => {
   background: linear-gradient(#e8ff00, transparent);
   margin: 0 auto;
   animation: pulse 2s ease-in-out infinite;
+}
+
+.sound-toggle {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.1);
+  background: rgba(10, 10, 26, 0.8);
+  backdrop-filter: blur(10px);
+  color: #6b7280;
+  cursor: pointer;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  animation: fadeInUp 1s ease-out backwards;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+.sound-toggle:hover {
+  border-color: #e8ff00;
+  color: #e8ff00;
+  transform: scale(1.1);
+  box-shadow: 0 8px 30px rgba(232,255,0,0.2);
+}
+
+.sound-toggle.active {
+  border-color: #e8ff00;
+  color: #e8ff00;
+  background: rgba(232,255,0,0.1);
+  animation: soundPulse 2s ease-in-out infinite;
+}
+
+@keyframes soundPulse {
+  0%, 100% { 
+    box-shadow: 0 0 20px rgba(232,255,0,0.2);
+  }
+  50% { 
+    box-shadow: 0 0 40px rgba(232,255,0,0.4), 0 0 60px rgba(0,229,255,0.2);
+  }
+}
+
+.sound-toggle svg {
+  width: 20px;
+  height: 20px;
 }
 
 .main-content {
